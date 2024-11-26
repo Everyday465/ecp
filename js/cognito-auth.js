@@ -52,36 +52,48 @@ var WildRydes = window.WildRydes || {};
      * Cognito User Pool functions
      */
 
-    function register(email, password, onSuccess, onFailure) {
-        var dataEmail = {
-            Name: 'email',
-            Value: email
-        };
-        var attributeEmail = new AmazonCognitoIdentity.CognitoUserAttribute(dataEmail);
-
-        userPool.signUp(toUsername(email), password, [attributeEmail], null,
-            function signUpCallback(err, result) {
-                if (!err) {
-                    onSuccess(result);
-                } else {
-                    onFailure(err);
-                }
-            }
-        );
+    /*Calculate the SECRET_HASH: Add a helper function to compute the hash*/
+    function generateSecretHash(username) {
+        const clientSecret = _config.cognito.clientSecret;
+        const clientId = _config.cognito.userPoolClientId;
+        const message = username + clientId;
+    
+        return CryptoJS.HmacSHA256(message, clientSecret).toString(CryptoJS.enc.Base64);
     }
+
+    function register(email, password, onSuccess, onFailure) {
+    const dataEmail = {
+        Name: 'email',
+        Value: email
+    };
+    const attributeEmail = new AmazonCognitoIdentity.CognitoUserAttribute(dataEmail);
+    const secretHash = generateSecretHash(toUsername(email));
+
+    userPool.signUp(toUsername(email), password, [attributeEmail], secretHash,
+        function signUpCallback(err, result) {
+            if (!err) {
+                onSuccess(result);
+            } else {
+                onFailure(err);
+            }
+        }
+    );
+}
 
     function signin(email, password, onSuccess, onFailure) {
-        var authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails({
-            Username: toUsername(email),
-            Password: password
-        });
+    const secretHash = generateSecretHash(toUsername(email));
+    const authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails({
+        Username: toUsername(email),
+        Password: password,
+        SecretHash: secretHash
+    });
 
-        var cognitoUser = createCognitoUser(email);
-        cognitoUser.authenticateUser(authenticationDetails, {
-            onSuccess: onSuccess,
-            onFailure: onFailure
-        });
-    }
+    const cognitoUser = createCognitoUser(email);
+    cognitoUser.authenticateUser(authenticationDetails, {
+        onSuccess: onSuccess,
+        onFailure: onFailure
+    });
+}
 
     function verify(email, code, onSuccess, onFailure) {
         createCognitoUser(email).confirmRegistration(code, true, function confirmCallback(err, result) {
